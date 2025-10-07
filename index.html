@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DHT22 Realtime Dashboard</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+      text-align: center;
+      padding: 1rem;
+    }
+    h1 { color: #0ff; }
+    .cards {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .card {
+      background: #222;
+      border-radius: 12px;
+      padding: 1rem 2rem;
+      min-width: 200px;
+      box-shadow: 0 0 10px #0ff2;
+    }
+    canvas {
+      background: #222;
+      margin-top: 1rem;
+      border-radius: 12px;
+      padding: 1rem;
+    }
+    button {
+      margin: 1rem auto;
+      display: block;
+      background-color: #0ff;
+      color: #111;
+      border: none;
+      border-radius: 8px;
+      padding: 0.7rem 1.5rem;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: bold;
+      box-shadow: 0 0 10px #0ff3;
+    }
+    button:hover {
+      background-color: #0cc;
+      box-shadow: 0 0 15px #0ff6;
+    }
+  </style>
+</head>
+<body>
+  <h1>🌡️ DHT22 Real-Time Dashboard</h1>
+
+  <div class="cards">
+    <div class="card">
+      <h2>Temperature</h2>
+      <p id="tempValue">-- °C</p>
+    </div>
+    <div class="card">
+      <h2>Humidity</h2>
+      <p id="humValue">-- %</p>
+    </div>
+  </div>
+
+  <!-- 📥 Download button moved above chart -->
+  <button id="downloadBtn">📥 Download Data (CSV)</button>
+
+  <canvas id="chart" width="400" height="200"></canvas>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAHIxM0bEJv19mYRDL8NT8BxvCqWJII0zE",
+      authDomain: "dwithermoproj.firebaseapp.com",
+      databaseURL: "https://dwithermoproj-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "dwithermoproj",
+      storageBucket: "dwithermoproj.firebasestorage.app",
+      messagingSenderId: "148296688731",
+      appId: "1:148296688731:web:ee55de3ceedc951fefcb7e",
+      measurementId: "G-NKMTCHXNC9"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const ref = db.ref("thermohygrometer");
+
+    // Chart.js setup
+    const ctx = document.getElementById('chart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Temperature (°C)',
+            borderColor: 'rgba(255, 99, 132, 1)',
+            backgroundColor: 'rgba(255, 99, 132, 0.2)',
+            data: []
+          },
+          {
+            label: 'Humidity (%)',
+            borderColor: 'rgba(54, 162, 235, 1)',
+            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+            data: []
+          }
+        ]
+      },
+      options: {
+        scales: { y: { beginAtZero: true } },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              afterBody: function(context) {
+                const index = context[0].dataIndex;
+                const label = chart.data.labels[index];
+                return `Timestamp: ${label}`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Listen for new readings
+    ref.limitToLast(20).on('child_added', (snapshot) => {
+      const data = snapshot.val();
+      const temp = data.temperature_c;
+      const hum = data.humidity;
+      const time = data.timestamp ? data.timestamp.split(" ")[1] : "--:--";
+
+      document.getElementById('tempValue').innerText = `${temp} °C`;
+      document.getElementById('humValue').innerText = `${hum} %`;
+
+      chart.data.labels.push(time);
+      chart.data.datasets[0].data.push(temp);
+      chart.data.datasets[1].data.push(hum);
+
+      if (chart.data.labels.length > 20) {
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+        chart.data.datasets[1].data.shift();
+      }
+
+      chart.update();
+    });
+
+    // 📥 CSV Download
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      ref.once('value', (snapshot) => {
+        const data = snapshot.val();
+        if (!data) {
+          alert("No data available!");
+          return;
+        }
+
+        const rows = [["Timestamp", "Temperature (°C)", "Humidity (%)"]];
+        for (let key in data) {
+          rows.push([
+            data[key].timestamp || "",
+            data[key].temperature_c || "",
+            data[key].humidity || ""
+          ]);
+        }
+
+        let csvContent = rows.map(e => e.join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "DHT22_Data.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    });
+  </script>
+</body>
+</html>
